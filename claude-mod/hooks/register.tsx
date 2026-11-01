@@ -5,6 +5,11 @@ const TOOL_PAGE = 'http://localhost:3190'
 const BROWSER = 'Claude_Browser'
 const POLL_MS = 2000
 const START_TRIES = 30
+// A session that began longer ago than this was resumed or reloaded, not newly opened.
+const NEW_CHAT_MS = 60000
+// The pane can take a moment to come up after a session starts.
+const OPEN_TRIES = 10
+const OPEN_RETRY_MS = 2000
 // The chat is named after the person's last prompt, so notification turns are skipped.
 const PERSON_ORIGINS = ['composer', 'bridge', 'sdk', 'unclassified']
 const MOD_FOLDER = /[\\/]claude-mod[\\/]?$/
@@ -58,31 +63,44 @@ const toolAddress = (page: string) => {
   return TOOL_PAGE
 }
 
+let isOpening = false
+
+const openTool = async ($: Host) => {
+  if (isOpening) return
+  isOpening = true
+  try {
+    if (!(await isToolUp($)) && !(await startTool($))) {
+      $.ui.toast('Annotate could not start. Run start.cmd in Tools/annotate.')
+      return
+    }
+    const page = await paneAddress($)
+    if (page.startsWith(TOOL_PAGE)) {
+      $.ui.toast('Annotate is already open in the browser pane.')
+      return
+    }
+    const reply = await $.mcp.call(BROWSER, 'navigate', { url: toolAddress(page) })
+    if (reply.isError) $.ui.toast(`Annotate could not open: ${reply.content[0]?.text ?? 'no reason given'}`)
+  } catch (error) {
+    $.ui.toast(`Annotate could not open: ${String(error)}`)
+  } finally {
+    isOpening = false
+  }
+}
+
+const openOnNewChat = async ($: Host) => {
+  const { startedAt } = await $.session.usage()
+  if ((await $.clock.now()) - startedAt > NEW_CHAT_MS) return
+  if (!(await isToolUp($)) && !(await startTool($))) return
+
+  for (let tries = 0; tries < OPEN_TRIES; tries++) {
+    const reply = await $.mcp.call(BROWSER, 'navigate', { url: TOOL_PAGE }).catch(() => null)
+    if (reply && !reply.isError) return
+    await $.clock.sleep(OPEN_RETRY_MS)
+  }
+}
+
 export const register: Register = on => {
   let label = ''
-  let isOpening = false
-
-  const openTool = async ($: Host) => {
-    if (isOpening) return
-    isOpening = true
-    try {
-      if (!(await isToolUp($)) && !(await startTool($))) {
-        $.ui.toast('Annotate could not start. Run start.cmd in Tools/annotate.')
-        return
-      }
-      const page = await paneAddress($)
-      if (page.startsWith(TOOL_PAGE)) {
-        $.ui.toast('Annotate is already open in the browser pane.')
-        return
-      }
-      const reply = await $.mcp.call(BROWSER, 'navigate', { url: toolAddress(page) })
-      if (reply.isError) $.ui.toast(`Annotate could not open: ${reply.content[0]?.text ?? 'no reason given'}`)
-    } catch (error) {
-      $.ui.toast(`Annotate could not open: ${String(error)}`)
-    } finally {
-      isOpening = false
-    }
-  }
 
   on('prompt.submit', ($, e, next) => {
     const isPerson = PERSON_ORIGINS.includes(e.origin?.kind ?? '')
@@ -131,6 +149,8 @@ export const register: Register = on => {
           isPolling = false
         })
     })
+
+    void openOnNewChat($).catch(() => undefined)
 
     return started
   })

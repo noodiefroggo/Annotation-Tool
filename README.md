@@ -4,7 +4,7 @@ Mark up PDFs, website snapshots and a live browser inside the built-in browser, 
 
 ## Start
 
-Double-click `Tools\annotate\start.cmd`, or ask Claude to start it, then open `http://localhost:3190`.
+The tool runs all the time at `http://localhost:3190`, so just open that address.
 
 Direct links also work:
 
@@ -65,6 +65,46 @@ Press it to open whatever the browser pane is showing:
 - Anything else, or an empty pane, opens the tool's start page.
 
 If the server is down, the button starts it first. That needs `CLAUDE_CODE_PLUGIN_DIRS` to name this folder's `claude-mod`. Sign-ins in the pane do not carry over, so a signed-in page needs signing in again in the live browser.
+
+## The always-on server
+
+One server runs for your Windows account, with no window, and only this computer can reach it.
+
+- **Login:** a scheduled task named `Annotate Server` starts it when you log in. It needs no admin rights.
+- **Crashes:** `service.pyw` restarts the server within about 10 seconds, and the task brings `service.pyw` back within 5 minutes if that stops.
+- **One copy only:** the server owns port 3190 outright, so a second copy exits with "Port 3190 is busy".
+- **Logs:** `data/server.log`.
+
+On a new computer, run `start.cmd` once to set up Python, stop it, then install the service:
+
+```bash
+powershell -ExecutionPolicy Bypass -File install-service.ps1
+```
+
+To remove the task, add `-Remove` to that command. After changing `server.py` or `live.py`, stop the running `python.exe` and the service starts the new code. `start.cmd`, the Annotate button and the pane entry still work without the service.
+
+## The entry in the browser pane
+
+The pane's new tab lists the servers from a project's `.claude/launch.json`, and that list shows before a chat has started. Add this entry to put Annotate there, using the path from that project's folder:
+
+```json
+{
+  "name": "annotate",
+  "runtimeExecutable": "cmd",
+  "runtimeArgs": ["/c", "Tools\\annotate\\preview.cmd"],
+  "port": 3192
+}
+```
+
+The entry runs `preview.py`, a small redirect page that starts the tool if it is down and then sends the pane to it. It has its own port because the pane moves an entry to another port when its own is taken, and the tool has to stay on 3190. The list belongs to each project, so a new project needs the entry added.
+
+## Opening in every new chat
+
+Every new chat in any project starts the server if it is down and opens the tool's start page in the browser pane. It retries quietly for about 20 seconds while the pane comes up. The app starts a session on the first message, so nothing happens on the empty new chat screen until then.
+
+A chat counts as new for its first minute. Resumed chats and mod reloads leave the pane alone, so restarting the app does not reopen the tool everywhere. Chats started by another session count as new too.
+
+Sessions without a browser pane, such as a terminal, get no error. They do still start the server. To stop this behaviour, remove the `openOnNewChat` call in `claude-mod/hooks/register.tsx`.
 
 ## How Claude reads notes without Send
 

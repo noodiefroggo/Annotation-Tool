@@ -10,6 +10,7 @@ import math
 import os
 import re
 import shutil
+import socket
 import sys
 import threading
 import time
@@ -1196,12 +1197,22 @@ class Handler(BaseHTTPRequestHandler):
 live = LiveBrowser(CAPTURE_JS)
 
 
+class OnlyServer(ThreadingHTTPServer):
+    """Owns the port outright. Python's default would let a second copy share it on Windows."""
+
+    allow_reuse_address = False
+
+    def server_bind(self):
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def main():
     DATA.mkdir(exist_ok=True)
     threading.Thread(target=export_worker, daemon=True).start()
     threading.Thread(target=live_close_when_idle, daemon=True).start()
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+        server = OnlyServer(("127.0.0.1", PORT), Handler)
     except OSError:
         sys.exit(f"Port {PORT} is busy. The tool may already be running at http://localhost:{PORT}")
     print(f"Annotate is running at http://localhost:{PORT}", flush=True)

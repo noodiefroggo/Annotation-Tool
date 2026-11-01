@@ -1,5 +1,6 @@
 {
   "name": "annotate-inbox",
-  "version": "0.2.0",
+  "version": "0.3.0",
+  "author": { "name": "Arpan Debnath" },
   "description": "Adds an Annotate button above the prompt and delivers feedback from the local annotation tool into this chat as a new turn."
 }
