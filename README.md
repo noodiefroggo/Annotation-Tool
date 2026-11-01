@@ -4,7 +4,7 @@ Mark up PDFs, website snapshots and a live browser inside the built-in browser, 
 
 ## Start
 
-The tool runs all the time at `http://localhost:3190`, so just open that address.
+The tool runs all the time at `http://localhost:3190`, so just open that address. The home page is your library of everything you've marked up, and it's where you open a PDF or a website.
 
 Direct links also work:
 
@@ -42,6 +42,25 @@ Select a sticky or text note to resize it: the round corner handle scales the no
 
 Pen strokes made within 1.5 seconds of each other join into one mark, so handwriting stays one note.
 
+## The Chrome extension
+
+The extension marks up the page you're on in your real browser, with your sign-ins.
+
+1. Open `chrome://extensions`, or `edge://extensions` in Edge.
+2. Turn on **Developer mode**.
+3. Choose **Load unpacked** and pick `Tools/annotate/extension`.
+4. Pin Annotate to the toolbar.
+
+Press the toolbar button or Ctrl+Shift+. to turn it on for a tab, and use the bar at the bottom of the page:
+
+- **Browse** uses the page normally. Esc gets you back to it.
+- **Comment** picks the element you click. It saves the selector, the text, the React component and, on a dev server, the source file and line.
+- **Pen, Highlight, Arrow, Circle and Box** draw on the page.
+
+Marks are saved to the local server as you go, and each scroll position gets its own screenshot. Open the toolbar popup to send them. Send lives there on purpose, outside the page, so a site cannot send feedback for you.
+
+Source files need a dev server, because production builds carry no source data. The page's text is treated as untrusted data in everything sent to Claude.
+
 ## Send to Claude
 
 Press **Send to Claude**, choose new marks or all marks, optionally add a message, and send.
@@ -53,6 +72,18 @@ Press **Send to Claude**, choose new marks or all marks, optionally add a messag
 With several chats connected, the panel lets you pick one. With none connected, the batch waits for the next chat that connects, and Copy message gives you the text to paste. Marks already sent dim in the Notes list, and the button counts what is new.
 
 The mod lives in `claude-mod/`. New sessions load it through `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`.
+
+### Cloud chats
+
+Choose **Cloud chat** in Send, paste the chat's link from claude.ai/code, and give the project's folder. Run `claude auth login` once first, because the command-line tool signs in separately from the desktop app.
+
+A cloud chat cannot reach this computer and takes text only, so:
+
+1. The batch goes to a branch named `annotations/<date>-<document>-<batch>` on the project's GitHub repo. It is built with Git plumbing, so your checkout and uncommitted work stay untouched.
+2. `claude -p ... --cloud <session>` queues a short message telling the chat how to fetch it.
+3. Branches older than 14 days are removed the next time you send.
+
+Screenshots only go to private repos. A public repo or a folder with no GitHub remote gets the text only, and Send tells you so. Your computer only has to be on when you press Send. Starting a new cloud chat from here is not supported, because that command needs an interactive terminal.
 
 ## The Annotate button
 

@@ -8,9 +8,8 @@
 </head>
 <body>
   <header id="bar">
-    <button id="openBtn" class="doc-btn" title="Open a PDF or website">
-      <span id="docName">Open a PDF or site</span>
-    </button>
+    <button id="homeBtn" class="home-btn" title="Back to your library">Library</button>
+    <span id="docName" class="doc-name"></span>
     <div id="tools" class="group" role="toolbar" aria-label="Tools"></div>
     <div id="colors" class="group" role="radiogroup" aria-label="Colour"></div>
     <div id="sizes" class="group" role="radiogroup" aria-label="Stroke size"></div>
@@ -44,6 +43,87 @@
     <button id="liveFull" class="text" title="Capture the whole page as it stands now, ready to mark up">Capture full page</button>
   </div>
 
+  <section id="home" hidden>
+    <div class="home-inner">
+      <header class="home-head">
+        <h1>Annotate</h1>
+        <p>Mark up a PDF or a website, then send it to Claude with screenshots and notes.</p>
+      </header>
+
+      <div class="starts">
+        <article class="start">
+          <h2>PDF</h2>
+          <p>Drop a PDF anywhere on this page, or open one from this computer.</p>
+          <label class="file-button">Choose a PDF<input id="pdfFile" type="file" accept="application/pdf,.pdf"></label>
+          <label class="field">
+            <span>Or paste its path</span>
+            <input id="pdfPath" type="text" spellcheck="false" placeholder="C:\path\to\file.pdf">
+          </label>
+          <div class="row"><button type="button" id="openPdf" class="secondary">Open path</button></div>
+        </article>
+
+        <article class="start">
+          <h2>Website</h2>
+          <p>Use a built-in browser, or capture a whole page to mark up.</p>
+          <label class="field">
+            <span>Address</span>
+            <input id="webUrl" type="text" spellcheck="false" placeholder="localhost:3100/work/always-there-dental">
+          </label>
+          <div class="row">
+            <button type="button" id="openLive" class="primary">Live browser</button>
+            <button type="button" id="openWeb" class="secondary">Full-page snapshot</button>
+          </div>
+          <details class="more">
+            <summary>Options</summary>
+            <label class="inline">Width
+              <select id="webWidth">
+                <option value="1440">1440 desktop</option>
+                <option value="1024">1024 laptop</option>
+                <option value="768">768 tablet</option>
+                <option value="390">390 phone</option>
+              </select>
+            </label>
+            <label class="inline wait">Wait
+              <select id="webWait">
+                <option value="1500">1.5s</option>
+                <option value="2500" selected>2.5s</option>
+                <option value="6000">6s</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Click first, for intro screens or cookie bars</span>
+              <input id="webClicks" type="text" spellcheck="false" placeholder="Button text, comma separated, e.g. Corporate, Skip, Skip">
+            </label>
+          </details>
+        </article>
+
+        <article class="start">
+          <h2>Your real Chrome</h2>
+          <p>Mark up the page you're on, signed in, with the source file on dev sites.</p>
+          <p id="extStatus" class="ext-status"></p>
+          <ol id="extSteps" hidden>
+            <li>Open <code>chrome://extensions</code></li>
+            <li>Turn on <b>Developer mode</b></li>
+            <li>Choose <b>Load unpacked</b> and pick this folder:</li>
+          </ol>
+          <div id="extPath" class="ext-path" hidden>
+            <code id="extFolder"></code>
+            <button type="button" id="extCopy" class="text">Copy</button>
+          </div>
+        </article>
+      </div>
+
+      <p id="openError" role="alert" hidden></p>
+
+      <div class="lib-head">
+        <h2>Library</h2>
+        <div id="libFilters" class="filters" role="group" aria-label="Filter by type"></div>
+        <input id="libSearch" type="search" placeholder="Search" aria-label="Search the library">
+      </div>
+      <div id="library"></div>
+    </div>
+  </section>
+
   <div id="body">
     <div id="main">
       <div id="liveStage" hidden>
@@ -61,6 +141,7 @@
   </div>
 
   <div id="pop" hidden>
+    <div id="popTags" class="tag-row" role="group" aria-label="Type of feedback"></div>
     <textarea id="popText" rows="3" placeholder="Add a note"></textarea>
     <div class="pop-row">
       <span id="popLabel"></span>
@@ -76,7 +157,15 @@
       <label><input type="radio" name="sendScope" value="all"> <span id="scopeAllLabel">All marks</span></label>
     </div>
     <textarea id="sendMessage" rows="3" placeholder="Anything to add? For example: fix these, then rebuild the PDF"></textarea>
-    <label id="sendTargetRow" class="inline" hidden>Chat <select id="sendTarget"></select></label>
+    <label id="sendTargetRow" class="inline">Send to <select id="sendTarget"></select></label>
+    <div id="cloudFields" hidden>
+      <label class="field"><span>Cloud chat link</span>
+        <input id="cloudLink" type="url" spellcheck="false" placeholder="https://claude.ai/code/session_...">
+      </label>
+      <label class="field"><span>Project folder, for screenshots</span>
+        <input id="cloudRepo" type="text" spellcheck="false" placeholder="C:\path\to\project">
+      </label>
+    </div>
     <p id="sendWho"></p>
     <div class="pop-row">
       <button id="sendCopy" class="text" hidden>Copy message</button>
@@ -85,56 +174,6 @@
       <button id="sendGo" class="primary">Send</button>
     </div>
   </div>
-
-  <dialog id="openDialog">
-    <form method="dialog" id="openForm">
-      <h2>Open something to mark up</h2>
-      <label class="field">
-        <span>Website address</span>
-        <input id="webUrl" type="text" spellcheck="false" placeholder="localhost:3100/work/always-there-dental">
-      </label>
-      <div class="row">
-        <button type="button" id="openLive" class="primary">Open live browser</button>
-        <button type="button" id="openWeb" class="secondary">Full-page snapshot</button>
-        <label class="inline">Width
-          <select id="webWidth">
-            <option value="1440">1440 desktop</option>
-            <option value="1024">1024 laptop</option>
-            <option value="768">768 tablet</option>
-            <option value="390">390 phone</option>
-          </select>
-        </label>
-      </div>
-      <details class="more">
-        <summary>Snapshot options</summary>
-        <label class="field">
-          <span>Click first, for intro screens or cookie bars</span>
-          <input id="webClicks" type="text" spellcheck="false" placeholder="Button text, comma separated, e.g. Corporate, Skip, Skip">
-        </label>
-        <label class="inline wait">Wait
-          <select id="webWait">
-            <option value="1500">1.5s</option>
-            <option value="2500" selected>2.5s</option>
-            <option value="6000">6s</option>
-          </select>
-        </label>
-      </details>
-      <label class="field">
-        <span>PDF path on this computer</span>
-        <input id="pdfPath" type="text" spellcheck="false" placeholder="C:\path\to\file.pdf">
-      </label>
-      <div class="row">
-        <button type="button" id="openPdf" class="primary">Open PDF</button>
-        <label class="file">or pick a file<input id="pdfFile" type="file" accept="application/pdf,.pdf"></label>
-      </div>
-      <p id="openError" role="alert" hidden></p>
-      <div id="recentWrap" hidden>
-        <h3>Recent</h3>
-        <div id="recent"></div>
-      </div>
-      <div class="row end"><button type="button" id="openClose" class="text">Close</button></div>
-    </form>
-  </dialog>
 
   <div id="toast" role="status" hidden></div>
   <script src="/static/app.js"></script>

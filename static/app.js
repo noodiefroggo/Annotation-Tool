@@ -24,6 +24,11 @@ const KIND_NAMES = {
   sticky: 'Sticky note', text: 'Text', comment: 'Comment',
 };
 const LIGHT_COLORS = ['#f76b15', '#f5b700'];
+const TAGS = ['Bug', 'Feature', 'Enhancement'];
+const PAGE_LABELS = { pdf: 'Page', web: 'Snapshot', live: 'View', page: 'View' };
+const KIND_LABELS = { pdf: 'PDF', web: 'Snapshot', live: 'Live', page: 'Chrome' };
+const FILTERS = [['all', 'All'], ['pdf', 'PDFs'], ['web', 'Websites'], ['page', 'Chrome']];
+const SYNC_MS = 3000;
 const SIZES = [2, 3.5, 7];
 const DRAG_KINDS = ['arrow', 'rect', 'ellipse'];
 const INK_MERGE_MS = 1500;
@@ -33,7 +38,7 @@ const S = {
   doc: null, paths: null, items: [], tool: 'pen', color: COLORS[0][1], size: 1,
   zoom: 1, fit: true, selected: null, editing: null, editBefore: null,
   undo: [], redo: [], pages: {}, lastInk: null, action: null, saveTimer: null, dirty: false,
-  mode: 'doc', unsent: new Set(), lastSendText: '',
+  mode: 'doc', unsent: new Set(), lastSendText: '', rev: 0, docs: [], filter: 'all',
 };
 
 const round = (v) => Math.round(v * 10) / 10;
@@ -237,7 +242,7 @@ function renderSide() {
     list.innerHTML = '<div class="empty">Marks you draw show up here. Pick a tool and go.</div>';
     return;
   }
-  const label = { pdf: 'Page', web: 'Snapshot', live: 'View' }[S.doc.meta.kind];
+  const label = PAGE_LABELS[S.doc.meta.kind];
   const sorted = [...S.items].sort((a, b) => a.page - b.page || bbox(a)[1] - bbox(b)[1]);
   const fragment = document.createDocumentFragment();
   let current = null;
@@ -248,7 +253,7 @@ function renderSide() {
       head.className = 'page-head';
       const pageUrl = S.doc.meta.pages[a.page - 1]?.url;
       head.textContent = `${label} ${a.page}`;
-      if (pageUrl && isLiveDoc()) head.title = pageUrl;
+      if (pageUrl) head.title = pageUrl;
       fragment.append(head);
     }
     const row = document.createElement('button');
@@ -262,7 +267,7 @@ function renderSide() {
     body.className = 'body';
     const kind = document.createElement('span');
     kind.className = 'kind';
-    kind.textContent = KIND_NAMES[a.kind];
+    kind.textContent = a.tag ? `${KIND_NAMES[a.kind]} · ${a.tag}` : KIND_NAMES[a.kind];
     body.append(kind);
     if (a.text) body.append(a.text);
     else {
@@ -270,6 +275,13 @@ function renderSide() {
       none.className = 'none';
       none.textContent = 'No note';
       body.append(none);
+    }
+    const code = a.target?.source || a.target?.component;
+    if (code) {
+      const where = document.createElement('code');
+      where.className = 'where';
+      where.textContent = code;
+      body.append(where);
     }
     row.append(num, body);
     row.addEventListener('click', () => jumpTo(a));
@@ -566,10 +578,17 @@ function openPopover(a, focus) {
   pop.hidden = false;
   $('#popText').value = a.text || '';
   $('#popLabel').textContent = `#${a.n} ${KIND_NAMES[a.kind]}`;
+  syncPopTags(a);
   placePopover();
   if (focus) {
     S.editBefore = snapshot();
     $('#popText').focus();
+  }
+}
+
+function syncPopTags(a) {
+  for (const button of $('#popTags').children) {
+    button.setAttribute('aria-pressed', String(a.tag === button.textContent));
   }
 }
 
@@ -688,7 +707,9 @@ async function save() {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body,
     });
     if (!res.ok) throw new Error(res.status);
-    S.unsent = new Set((await res.json()).unsent);
+    const reply = await res.json();
+    S.unsent = new Set(reply.unsent);
+    S.rev = reply.rev;
     syncSendCount();
     if (!S.dirty) renderSide();
     if (!S.dirty) setStatus(`Saved, ${S.items.length} mark${S.items.length === 1 ? '' : 's'}`);
@@ -727,7 +748,7 @@ function syncTools() {
   const stage = $('#stage');
   stage.className = `tool-${S.tool}${S.tool === 'select' ? '' : ' drawing'}`;
   $('#liveBar').hidden = !isLiveDoc();
-  $('#refreshBtn').hidden = !S.doc || isLiveDoc();
+  $('#refreshBtn').hidden = !S.doc || isLiveDoc() || S.doc.meta.kind === 'page';
 }
 
 function setColor(color) {
@@ -792,7 +813,7 @@ const TOOL_KEYS = Object.fromEntries(TOOLS.map(([id, key]) => [key, id]));
 
 function onKey(e) {
   const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName || '');
-  if (typing || $('#openDialog').open) return;
+  if (typing || !S.doc) return;
   const key = e.key.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && key === 'z') {
     e.preventDefault();
@@ -845,7 +866,9 @@ function toast(text, ms = 0) {
 }
 
 function showDoc(payload) {
+  leaveHome();
   S.doc = payload;
+  S.rev = payload.annotations.rev || 0;
   S.paths = payload.paths;
   S.items = payload.annotations.items || [];
   S.unsent = new Set(payload.unsent || []);
@@ -858,6 +881,7 @@ function showDoc(payload) {
   closePopover();
   $('#docName').textContent = payload.meta.title;
   $('#docName').title = payload.meta.source;
+  $('#sendBtn').hidden = false;
   document.title = `${payload.meta.title} - Annotate`;
   $('#latestPath').textContent = payload.paths.latest;
   buildPages();
@@ -865,12 +889,11 @@ function showDoc(payload) {
   syncTools();
   setStatus(`Saved, ${S.items.length} mark${S.items.length === 1 ? '' : 's'}`);
   history.replaceState(null, '', `/?doc=${encodeURIComponent(payload.meta.id)}`);
-  try { localStorage.setItem('annotate.doc', payload.meta.id); } catch { /* storage may be blocked */ }
 }
 
 async function openLive(url) {
-  if ($('#openDialog').open) $('#openDialog').close();
   await flush();
+  leaveHome();
   $('#liveWidth').value = $('#webWidth').value;
   toast('Starting the browser');
   $('#liveBar').hidden = false;
@@ -889,8 +912,7 @@ async function openLive(url) {
   } catch (err) {
     showLiveStage(false);
     syncTools();
-    toast(err.message, 6000);
-    showOpen();
+    showHome(err.message);
   }
 }
 
@@ -905,11 +927,8 @@ async function openWith(body, message) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
     });
     showDoc(payload);
-    if ($('#openDialog').open) $('#openDialog').close();
   } catch (err) {
-    error.textContent = err.message;
-    error.hidden = false;
-    if (!$('#openDialog').open) showOpen();
+    showHome(err.message);
   } finally {
     toast('');
     for (const b of [$('#openPdf'), $('#openWeb')]) b.disabled = false;
@@ -923,7 +942,6 @@ async function uploadPdf(file) {
     await flush();
     const payload = await api(`/api/upload?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file });
     showDoc(payload);
-    if ($('#openDialog').open) $('#openDialog').close();
     toast('');
   } catch (err) {
     toast(err.message, 5000);
@@ -935,26 +953,136 @@ async function flush() {
   await save();
 }
 
-async function showOpen() {
-  const dialog = $('#openDialog');
-  if (!dialog.open) dialog.showModal();
-  const { docs } = await api('/api/docs');
-  const host = $('#recent');
-  host.replaceChildren();
-  $('#recentWrap').hidden = !docs.length;
-  for (const doc of docs.slice(0, 12)) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'recent-item';
-    row.title = doc.source;
-    const name = document.createElement('span');
-    name.textContent = doc.title;
-    const count = document.createElement('span');
-    count.textContent = `${doc.notes} mark${doc.notes === 1 ? '' : 's'}`;
-    row.append(name, count);
-    row.addEventListener('click', () => loadDoc(doc.id).then(() => dialog.close()));
-    host.append(row);
+function leaveHome() {
+  document.body.classList.remove('at-home');
+  $('#home').hidden = true;
+}
+
+async function showHome(error = '') {
+  await flush();
+  if (inBrowse()) leaveBrowse();
+  closePopover();
+  S.doc = null;
+  S.items = [];
+  document.body.classList.add('at-home');
+  $('#home').hidden = false;
+  $('#liveBar').hidden = true;
+  $('#docName').textContent = '';
+  $('#sendBtn').hidden = true;
+  $('#sendPop').hidden = true;
+  document.title = 'Annotate';
+  history.replaceState(null, '', '/');
+  $('#openError').textContent = error;
+  $('#openError').hidden = !error;
+  const [{ docs }, app] = await Promise.all([api('/api/docs'), api('/api/app')]);
+  S.docs = docs;
+  renderLibrary();
+  renderExtension(app);
+}
+
+function renderExtension(app) {
+  const status = $('#extStatus');
+  status.textContent = app.extension ? 'Extension connected' : 'Add the extension once to use this:';
+  status.dataset.state = app.extension ? 'on' : 'off';
+  $('#extSteps').hidden = app.extension;
+  $('#extPath').hidden = app.extension;
+  $('#extFolder').textContent = app.folder;
+}
+
+function matchesFilter(doc) {
+  if (S.filter === 'all') return true;
+  return S.filter === 'web' ? doc.kind === 'web' || doc.kind === 'live' : doc.kind === S.filter;
+}
+
+function libraryCard(doc) {
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'card';
+  card.title = doc.source;
+  const shot = document.createElement('span');
+  shot.className = 'shot';
+  if (doc.thumb) {
+    const image = document.createElement('img');
+    image.alt = '';
+    image.loading = 'lazy';
+    image.src = `/files/${doc.id}/pages/${doc.thumb}`;
+    shot.append(image);
   }
+  const badge = document.createElement('span');
+  badge.className = 'badge';
+  badge.textContent = KIND_LABELS[doc.kind];
+  shot.append(badge);
+  const title = document.createElement('span');
+  title.className = 'card-title';
+  title.textContent = doc.title;
+  const meta = document.createElement('span');
+  meta.className = 'card-meta';
+  const when = new Date(doc.updated * 1000).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  meta.textContent = `${doc.notes} mark${doc.notes === 1 ? '' : 's'} · ${when}`;
+  card.append(shot, title, meta);
+  card.addEventListener('click', () => loadDoc(doc.id));
+  return card;
+}
+
+function renderLibrary() {
+  const query = $('#libSearch').value.trim().toLowerCase();
+  const docs = S.docs.filter((doc) => matchesFilter(doc) && doc.title.toLowerCase().includes(query));
+  const host = $('#library');
+  if (!docs.length) {
+    const empty = document.createElement('p');
+    empty.className = 'empty';
+    empty.textContent = S.docs.length ? 'Nothing matches that.' : 'Everything you mark up is kept here.';
+    host.replaceChildren(empty);
+    return;
+  }
+  host.replaceChildren(...docs.map(libraryCard));
+}
+
+function buildFilters() {
+  const host = $('#libFilters');
+  for (const [id, label] of FILTERS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.dataset.filter = id;
+    button.setAttribute('aria-pressed', String(id === S.filter));
+    button.addEventListener('click', () => {
+      S.filter = id;
+      for (const other of host.children) other.setAttribute('aria-pressed', String(other === button));
+      renderLibrary();
+    });
+    host.append(button);
+  }
+}
+
+function buildTags() {
+  for (const tag of TAGS) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = tag;
+    button.setAttribute('aria-pressed', 'false');
+    button.addEventListener('click', () => {
+      const a = byId(S.selected);
+      if (!a) return;
+      a.tag = a.tag === tag ? undefined : tag;
+      syncPopTags(a);
+      renderSide();
+      touch();
+    });
+    $('#popTags').append(button);
+  }
+}
+
+// Marks can arrive from the extension while a document is open here.
+async function syncDoc() {
+  if (!S.doc || S.dirty || S.editing || S.action || inBrowse() || document.hidden) return;
+  try {
+    const { rev, pages } = await api(`/api/docs/${S.doc.meta.id}/revision`);
+    if (!S.doc || S.dirty || (rev === S.rev && pages === S.doc.meta.pages.length)) return;
+    const top = $('#stage').scrollTop;
+    showDoc(await api(`/api/docs/${S.doc.meta.id}`));
+    $('#stage').scrollTop = top;
+  } catch { /* the next tick tries again */ }
 }
 
 async function loadDoc(id) {
@@ -978,8 +1106,16 @@ async function refreshDoc() {
 }
 
 function bindUi() {
-  $('#openBtn').addEventListener('click', showOpen);
-  $('#openClose').addEventListener('click', () => $('#openDialog').close());
+  $('#homeBtn').addEventListener('click', () => showHome());
+  $('#libSearch').addEventListener('input', renderLibrary);
+  $('#extCopy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#extFolder').textContent);
+      toast('Copied', 2000);
+    } catch {
+      toast('The browser blocked copying. Select the path instead.', 4000);
+    }
+  });
   $('#openPdf').addEventListener('click', () => {
     const path = $('#pdfPath').value.trim();
     if (path) openWith({ pdf: path }, 'Rendering pages');
@@ -1044,15 +1180,27 @@ function bindUi() {
     e.preventDefault();
     setZoom(S.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
   }, { passive: false });
-  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    document.body.classList.toggle('dragging', e.dataTransfer.types.includes('Files'));
+  });
+  document.addEventListener('dragleave', (e) => {
+    if (!e.relatedTarget) document.body.classList.remove('dragging');
+  });
   document.addEventListener('drop', (e) => {
     e.preventDefault();
-    uploadPdf(e.dataTransfer.files[0]);
+    document.body.classList.remove('dragging');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) uploadPdf(file);
+    else toast(`${file.name} isn't a PDF. Drop a PDF to open it.`, 5000);
   });
 }
 
 async function start() {
   buildToolbar();
+  buildFilters();
+  buildTags();
   bindUi();
   bindLive();
   bindSend();
@@ -1065,10 +1213,10 @@ async function start() {
     const clicks = (params.get('click') || '').split(',');
     return openWith({ url: params.get('url'), clicks, width: Number(params.get('width')) || 1440 }, 'Capturing the site');
   }
-  let id = params.get('doc');
-  try { id = id || localStorage.getItem('annotate.doc'); } catch { /* storage may be blocked */ }
+  setInterval(syncDoc, SYNC_MS);
+  const id = params.get('doc');
   if (id) {
     try { return await loadDoc(id); } catch { /* document was removed */ }
   }
-  showOpen();
+  showHome();
 }

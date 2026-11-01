@@ -149,6 +149,7 @@ async function pumpLive() {
 }
 
 const MOUSE_BUTTONS = ['left', 'middle', 'right'];
+const CLOUD_TARGET = 'cloud';
 
 function bindLive() {
   const frame = $('#liveFrame');
@@ -238,19 +239,22 @@ async function refreshSendTargets() {
   const select = $('#sendTarget');
   const previous = select.value;
   select.replaceChildren();
-  for (const listener of listeners) {
-    const option = document.createElement('option');
-    option.value = listener.session;
-    option.textContent = listener.name;
-    select.append(option);
-  }
+  for (const listener of listeners) select.append(new Option(listener.name, listener.session));
+  if (!listeners.length) select.append(new Option('Next Claude chat that connects', ''));
+  select.append(new Option('Cloud chat', CLOUD_TARGET));
   if ([...select.options].some((o) => o.value === previous)) select.value = previous;
-  $('#sendTargetRow').hidden = listeners.length < 2;
+  syncCloudFields();
   const count = listeners.length;
   $('#sendWho').textContent = count
     ? `Connected to ${count === 1 ? listeners[0].name : `${count} Claude chats`}`
     : 'No Claude chat is connected. Your notes will wait until one opens.';
   $('#sendWho').dataset.state = count ? 'on' : 'off';
+}
+
+function syncCloudFields() {
+  const isCloud = $('#sendTarget').value === CLOUD_TARGET;
+  $('#cloudFields').hidden = !isCloud;
+  $('#sendWho').hidden = isCloud;
 }
 
 async function openSend() {
@@ -263,6 +267,9 @@ async function openSend() {
   pop.hidden = false;
   $('#sendMessage').focus();
   await refreshSendTargets().catch(() => undefined);
+  const { settings } = await api('/api/app').catch(() => ({ settings: {} }));
+  $('#cloudLink').value = $('#cloudLink').value || settings.cloud || '';
+  $('#cloudRepo').value = $('#cloudRepo').value || settings.repo || '';
 }
 
 async function sendToClaude() {
@@ -271,8 +278,11 @@ async function sendToClaude() {
   try {
     await flush();
     const scope = document.querySelector('input[name="sendScope"]:checked').value;
+    const target = $('#sendTarget').value;
+    if (target === CLOUD_TARGET) toast('Sending to the cloud chat');
     const reply = await api(`/api/docs/${S.doc.meta.id}/send`, json({
-      scope, message: $('#sendMessage').value, target: $('#sendTarget').value,
+      scope, message: $('#sendMessage').value, target,
+      cloud: $('#cloudLink').value, repo: $('#cloudRepo').value,
     }));
     S.unsent = new Set(reply.unsent);
     S.lastSendText = reply.text;
@@ -280,6 +290,11 @@ async function sendToClaude() {
     $('#sendPop').hidden = true;
     syncSendCount();
     renderSide();
+    if (reply.cloud) {
+      const note = reply.cloud.images ? '' : ' Text only, because the project is not a private GitHub repo.';
+      toast(`Sent ${reply.count} mark${reply.count === 1 ? '' : 's'} to the cloud chat.${note}`, 6000);
+      return;
+    }
     toast(`Sending ${reply.count} mark${reply.count === 1 ? '' : 's'}`);
     watchDelivery(reply.id);
   } catch (err) {
@@ -315,6 +330,7 @@ function bindSend() {
   $('#sendBtn').addEventListener('click', openSend);
   $('#sendGo').addEventListener('click', sendToClaude);
   $('#sendClose').addEventListener('click', () => { $('#sendPop').hidden = true; });
+  $('#sendTarget').addEventListener('change', syncCloudFields);
   $('#sendCopy').addEventListener('click', copySendText);
   $('#sendMessage').addEventListener('keydown', (e) => {
     e.stopPropagation();

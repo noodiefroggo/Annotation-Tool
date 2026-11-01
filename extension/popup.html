@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Annotate</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <strong>Annotate</strong>
+    <span id="dot" title="Local server status"></span>
+  </header>
+
+  <section id="offline" hidden>
+    <p>The tool isn't running at <code>localhost:3190</code>. Start it with <code>start.cmd</code>.</p>
+  </section>
+
+  <section id="blocked" hidden>
+    <p>Browsers don't let extensions mark up this page. Open a normal website to start.</p>
+  </section>
+
+  <section id="ready" hidden>
+    <button id="toggle" class="primary wide">Annotate this page</button>
+    <p class="hint">Ctrl+Shift+. turns this on or off</p>
+
+    <div id="sendArea" hidden>
+      <h2>Send to Claude</h2>
+      <p id="counts"></p>
+      <textarea id="message" rows="2" placeholder="Anything to add?"></textarea>
+      <label>Send to
+        <select id="target"></select>
+      </label>
+      <div id="cloudFields" hidden>
+        <label>Cloud chat link
+          <input id="cloudLink" type="url" spellcheck="false" placeholder="https://claude.ai/code/session_...">
+        </label>
+        <label>Project folder, for screenshots
+          <input id="repo" type="text" spellcheck="false" placeholder="C:\path\to\project">
+        </label>
+      </div>
+      <button id="send" class="primary wide">Send</button>
+      <p id="result" role="status"></p>
+    </div>
+
+    <button id="site" class="plain wide">Open in Annotate</button>
+  </section>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -133,8 +133,10 @@ export const register: Register = on => {
       const reply = await $.http.fetch(`${SERVER}/api/claude/poll?session=${session}&name=${name}`)
       if (!reply.ok) return
       const { messages } = JSON.parse(reply.text) as Inbox
+      // Not awaited: a submit waits for a busy chat to go idle, and polling has to carry on
+      // meanwhile or the chat drops off the Send panel's list.
       for (const message of messages) {
-        await $.prompt.submit({ text: message.text, asUser: true }).catch(() =>
+        void $.prompt.submit({ text: message.text, asUser: true }).catch(() =>
           $.http.fetch(`${SERVER}/api/claude/requeue`, { method: 'POST', body: JSON.stringify({ id: message.id }) }),
         )
       }

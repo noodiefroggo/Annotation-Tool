@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Annotate",
+  "version": "1.0.0",
+  "description": "Mark up any page in your real browser and send the feedback, with screenshots and source files, straight to Claude.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqW94Zw6aHHcA1MyAunFNYRJXC0dDZ0KMfp7pqoYNVXU6eGc53wpWCRd1af2jeKvXCd9ktfQ/xd862x7eUJ3oY1g8PxtlT2AjzdA4oSQ23lIJLUo+VrYi4MaJqCUPvoIB6q9tSd5lLQ65JKS2UwMZqRWyFYVgDJ1+oWcPbQm47rVvUZ/hXhOZH9ZMZqLQK7M2cg4cI4tpfd5SmAWEaO1+pC8wslAW73MzyK/RxuU6KheHqaSwsHprn7d0K/XhHxej3iox5QVCxkbpy5eKsSY2jHM5R1JTi/p0TO5UeisDXZXFIElkYuayeDr/mh0ZHX3lHwEuEmdxEgcRRytTaZ+J9QIDAQAB",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Annotate",
+    "default_icon": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "commands": {
+    "toggle-annotate": {
+      "suggested_key": { "default": "Ctrl+Shift+Period" },
+      "description": "Turn annotation on or off for this page"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["page.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
