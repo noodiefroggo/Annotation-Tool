@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Annotate</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header id="bar">
+    <button id="openBtn" class="doc-btn" title="Open a PDF or website">
+      <span id="docName">Open a PDF or site</span>
+    </button>
+    <div id="tools" class="group" role="toolbar" aria-label="Tools"></div>
+    <div id="colors" class="group" role="radiogroup" aria-label="Colour"></div>
+    <div id="sizes" class="group" role="radiogroup" aria-label="Stroke size"></div>
+    <div class="group">
+      <button id="undoBtn" class="icon" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+      <button id="redoBtn" class="icon" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"></button>
+    </div>
+    <div class="group">
+      <button id="zoomOut" class="icon text" title="Zoom out (-)" aria-label="Zoom out">&minus;</button>
+      <button id="zoomFit" class="text" title="Fit to width (0)">Fit</button>
+      <button id="zoomIn" class="icon text" title="Zoom in (+)" aria-label="Zoom in">+</button>
+    </div>
+    <div class="group end">
+      <button id="refreshBtn" class="text" title="Render the PDF or capture the site again. Your marks stay.">Refresh</button>
+      <button id="sideBtn" class="text" title="Show or hide notes">Notes <span id="noteCount">0</span></button>
+      <button id="sendBtn" class="send" title="Send your marks to a Claude chat">Send to Claude <span id="sendCount" hidden>0</span></button>
+    </div>
+  </header>
+
+  <div id="liveBar" hidden>
+    <button id="liveBack" class="icon text" title="Back" aria-label="Back">&larr;</button>
+    <button id="liveForward" class="icon text" title="Forward" aria-label="Forward">&rarr;</button>
+    <button id="liveReload" class="icon text" title="Reload" aria-label="Reload">&#8635;</button>
+    <input id="liveUrl" type="text" spellcheck="false" aria-label="Address" placeholder="Enter an address">
+    <select id="liveWidth" aria-label="Browser width">
+      <option value="1440">1440 desktop</option>
+      <option value="1024">1024 laptop</option>
+      <option value="768">768 tablet</option>
+      <option value="390">390 phone</option>
+    </select>
+    <button id="liveFull" class="text" title="Capture the whole page as it stands now, ready to mark up">Capture full page</button>
+  </div>
+
+  <div id="body">
+    <div id="main">
+      <div id="liveStage" hidden>
+        <div id="liveFrame" tabindex="0" aria-label="Live browser"><img id="liveImg" alt="" draggable="false"></div>
+      </div>
+      <main id="stage" tabindex="-1"><div id="pages"></div></main>
+    </div>
+    <aside id="side">
+      <div id="noteList"></div>
+      <footer id="sideFoot">
+        <div id="status">No document</div>
+        <div id="readHint">Notes also stay in <code id="latestPath">data\LATEST.md</code></div>
+      </footer>
+    </aside>
+  </div>
+
+  <div id="pop" hidden>
+    <textarea id="popText" rows="3" placeholder="Add a note"></textarea>
+    <div class="pop-row">
+      <span id="popLabel"></span>
+      <button id="popDelete" class="text danger">Delete</button>
+      <button id="popDone" class="text">Done</button>
+    </div>
+  </div>
+
+  <div id="sendPop" hidden role="dialog" aria-label="Send to Claude">
+    <h2>Send to Claude</h2>
+    <div class="scope">
+      <label><input type="radio" name="sendScope" value="new" checked> <span id="scopeNewLabel">New marks</span></label>
+      <label><input type="radio" name="sendScope" value="all"> <span id="scopeAllLabel">All marks</span></label>
+    </div>
+    <textarea id="sendMessage" rows="3" placeholder="Anything to add? For example: fix these, then rebuild the PDF"></textarea>
+    <label id="sendTargetRow" class="inline" hidden>Chat <select id="sendTarget"></select></label>
+    <p id="sendWho"></p>
+    <div class="pop-row">
+      <button id="sendCopy" class="text" hidden>Copy message</button>
+      <span class="spacer"></span>
+      <button id="sendClose" class="text">Close</button>
+      <button id="sendGo" class="primary">Send</button>
+    </div>
+  </div>
+
+  <dialog id="openDialog">
+    <form method="dialog" id="openForm">
+      <h2>Open something to mark up</h2>
+      <label class="field">
+        <span>Website address</span>
+        <input id="webUrl" type="text" spellcheck="false" placeholder="localhost:3100/work/always-there-dental">
+      </label>
+      <div class="row">
+        <button type="button" id="openLive" class="primary">Open live browser</button>
+        <button type="button" id="openWeb" class="secondary">Full-page snapshot</button>
+        <label class="inline">Width
+          <select id="webWidth">
+            <option value="1440">1440 desktop</option>
+            <option value="1024">1024 laptop</option>
+            <option value="768">768 tablet</option>
+            <option value="390">390 phone</option>
+          </select>
+        </label>
+      </div>
+      <details class="more">
+        <summary>Snapshot options</summary>
+        <label class="field">
+          <span>Click first, for intro screens or cookie bars</span>
+          <input id="webClicks" type="text" spellcheck="false" placeholder="Button text, comma separated, e.g. Corporate, Skip, Skip">
+        </label>
+        <label class="inline wait">Wait
+          <select id="webWait">
+            <option value="1500">1.5s</option>
+            <option value="2500" selected>2.5s</option>
+            <option value="6000">6s</option>
+          </select>
+        </label>
+      </details>
+      <label class="field">
+        <span>PDF path on this computer</span>
+        <input id="pdfPath" type="text" spellcheck="false" placeholder="C:\path\to\file.pdf">
+      </label>
+      <div class="row">
+        <button type="button" id="openPdf" class="primary">Open PDF</button>
+        <label class="file">or pick a file<input id="pdfFile" type="file" accept="application/pdf,.pdf"></label>
+      </div>
+      <p id="openError" role="alert" hidden></p>
+      <div id="recentWrap" hidden>
+        <h3>Recent</h3>
+        <div id="recent"></div>
+      </div>
+      <div class="row end"><button type="button" id="openClose" class="text">Close</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status" hidden></div>
+  <script src="/static/app.js"></script>
+  <script src="/static/live.js"></script>
+</body>
+</html>
