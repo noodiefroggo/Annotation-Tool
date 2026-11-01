@@ -114,6 +114,24 @@ powershell -ExecutionPolicy Bypass -File install-service.ps1
 
 To remove the task, add `-Remove` to that command. After changing `server.py` or `live.py`, stop the running `python.exe` and the service starts the new code. `start.cmd`, the Annotate button and the pane entry still work without the service.
 
+## Mac and Linux
+
+The server, `start.sh` and `install-service.sh` are written for Mac and Linux, but they have not been run on either yet. Only Windows has been tested.
+
+```bash
+sh start.sh
+```
+
+That sets up Python and starts the tool. It needs Python 3, and Edge or Chrome for website capture and the live browser. To keep it running, stop it and install the service, which uses launchd on Mac and a systemd user service on Linux:
+
+```bash
+sh install-service.sh
+```
+
+To remove it, run `sh install-service.sh --remove`.
+
+The Claude mod is still Windows only: its Annotate button can't start the server on Mac or Linux, and it can't pass a PDF from the browser pane.
+
 ## The entry in the browser pane
 
 The pane's new tab lists the servers from a project's `.claude/launch.json`, and that list shows before a chat has started. Add this entry to put Annotate there, using the path from that project's folder:
@@ -154,3 +172,7 @@ Each note has its page, position (units and percent), kind, colour and text. It 
 - Video and sound are not streamed. Browser pop-up dialogs close on their own, and links that open a new tab open in place.
 - Full-page captures stop at 16,000 px tall.
 - Paste works. Copying text out of the live browser does not.
+
+## Licence
+
+MIT. See `LICENSE`.

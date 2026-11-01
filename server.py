@@ -1,6 +1,6 @@
 """Local annotation tool: draw on PDFs and website snapshots, read the notes back as data.
 
-Run with start.cmd, then open http://localhost:3190 in the built-in browser.
+Run with start.cmd, or start.sh on Mac and Linux, then open http://localhost:3190 in the built-in browser.
 Every save writes data/<doc>/export/notes.md and notes.json plus crops, and copies
 the newest notes to data/LATEST.md, so Claude can read them without any export step.
 """
@@ -45,6 +45,11 @@ EXTENSION_SEEN_SECONDS = 600
 # Public pages allowed to use this tool from a visitor's browser. Anything else gets no CORS
 # headers, so it cannot read a reply, and its writes are refused.
 SITE_ORIGINS = {"https://arpan-debnath.vercel.app"}
+FONT_PATHS = (
+    "C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "DejaVuSans.ttf",
+)
 Image.MAX_IMAGE_PIXELS = None
 
 COLOR_NAMES = {
@@ -566,9 +571,9 @@ def refresh_doc(doc_id):
 
 
 def load_font(size):
-    for name in ("segoeui.ttf", "arial.ttf"):
+    for name in FONT_PATHS:
         try:
-            return ImageFont.truetype(f"C:/Windows/Fonts/{name}", max(int(size), 6))
+            return ImageFont.truetype(name, max(int(size), 6))
         except OSError:
             continue
     return ImageFont.load_default()
@@ -1446,12 +1451,16 @@ live = LiveBrowser(CAPTURE_JS)
 
 
 class OnlyServer(ThreadingHTTPServer):
-    """Owns the port outright. Python's default would let a second copy share it on Windows."""
+    """Owns the port outright. Python's default would let a second copy share it on Windows.
 
-    allow_reuse_address = False
+    On Mac and Linux that default is safe, and it lets a restart take the port straight back.
+    """
+
+    allow_reuse_address = os.name != "nt"
 
     def server_bind(self):
-        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        if os.name == "nt":
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         super().server_bind()
 
 

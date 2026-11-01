@@ -32,10 +32,22 @@ def tool_is_up():
         return False
 
 
+def start_tool():
+    if os.name == "nt":
+        subprocess.run(["powershell", "-NoProfile", "-Command", START_COMMAND.format(home=HOME)], check=False)
+        return
+    logs = HOME / "data"
+    logs.mkdir(exist_ok=True)
+    with (logs / "server.log").open("ab") as log:
+        subprocess.Popen(
+            ["sh", str(HOME / "start.sh")], cwd=HOME, stdin=subprocess.DEVNULL, stdout=log,
+            stderr=subprocess.STDOUT, start_new_session=True)
+
+
 def ensure_tool():
     if tool_is_up():
         return True
-    subprocess.run(["powershell", "-NoProfile", "-Command", START_COMMAND.format(home=HOME)], check=False)
+    start_tool()
     for _ in range(START_TRIES):
         time.sleep(0.5)
         if tool_is_up():
@@ -51,7 +63,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             return
-        body = b"Annotate could not start. Run start.cmd in Tools/annotate."
+        body = b"Annotate could not start. Run start.cmd, or start.sh on Mac and Linux, in Tools/annotate."
         self.send_response(503)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

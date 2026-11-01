@@ -22,6 +22,7 @@ GIT_EMAIL = "annotate@users.noreply.github.com"
 MESSAGE_LIMIT = 3500
 # Vercel reads its settings from the commit it would build, so each batch opts out itself.
 NO_DEPLOY = '{ "git": { "deploymentEnabled": false } }\n'
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class CloudError(Exception):
@@ -36,6 +37,12 @@ def session_of(link):
 
 
 def find_cli():
+    if os.name != "nt":
+        home = Path.home()
+        for path in (shutil.which("claude"), home / ".local/bin/claude", home / ".claude/local/claude"):
+            if path and Path(path).is_file():
+                return str(path)
+        raise CloudError("The claude command is not installed on this computer")
     roaming = os.environ.get("APPDATA", "")
     local = os.environ.get("LOCALAPPDATA", "")
     candidates = [Path(roaming) / "npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe"]
@@ -52,7 +59,7 @@ def find_cli():
 def run(args, cwd=None, data=None, env=None, timeout=60):
     done = subprocess.run(
         args, cwd=cwd, input=data, capture_output=True, env=env, timeout=timeout, check=False,
-        creationflags=subprocess.CREATE_NO_WINDOW)
+        creationflags=NO_WINDOW)
     if done.returncode:
         reason = done.stderr.decode(errors="replace").strip() or done.stdout.decode(errors="replace").strip()
         raise CloudError(f"{Path(args[0]).stem} failed: {reason[:300]}")

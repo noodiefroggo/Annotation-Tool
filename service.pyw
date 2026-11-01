@@ -1,6 +1,6 @@
-"""Keeps the server running, with no window. Windows starts this at login.
+"""Keeps the server running, with no window. The computer starts this at login.
 
-install-service.ps1 registers it. If the server exits for any reason, it starts again here. If
+install-service.ps1 registers it, or install-service.sh on Mac and Linux. If the server exits for any reason, it starts again here. If
 something else already holds the port, this waits, so there is only ever one server.
 """
 import os
@@ -14,6 +14,7 @@ LOG = HOME / "data" / "server.log"
 PORT = int(os.environ.get("ANNOTATE_PORT", "3190"))
 CHECK_SECONDS = 5
 MAX_LOG_BYTES = 5_000_000
+START = ["cmd", "/c", str(HOME / "start.cmd")] if os.name == "nt" else ["sh", str(HOME / "start.sh")]
 
 
 def server_is_up():
@@ -30,12 +31,12 @@ def run_server():
         LOG.replace(LOG.with_suffix(".old.log"))
     with LOG.open("ab") as log:
         subprocess.run(
-            ["cmd", "/c", str(HOME / "start.cmd")],
+            START,
             cwd=HOME,
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=subprocess.STDOUT,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
 
