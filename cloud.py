@@ -20,6 +20,8 @@ BRANCH_DAYS = 14
 GIT_NAME = "Annotate"
 GIT_EMAIL = "annotate@users.noreply.github.com"
 MESSAGE_LIMIT = 3500
+# Vercel reads its settings from the commit it would build, so each batch opts out itself.
+NO_DEPLOY = '{ "git": { "deploymentEnabled": false } }\n'
 
 
 class CloudError(Exception):
@@ -86,6 +88,7 @@ def write_tree(repo, folder):
 
 
 def push_folder(repo, branch, folder, title):
+    Path(folder, "vercel.json").write_text(NO_DEPLOY, encoding="utf-8", newline="\n")
     tree = write_tree(repo, folder)
     identity = {
         "GIT_AUTHOR_NAME": GIT_NAME, "GIT_AUTHOR_EMAIL": GIT_EMAIL,
