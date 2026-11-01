@@ -42,6 +42,9 @@ PAGE_LABELS = {"pdf": "Page", "web": "Snapshot", "live": "View", "page": "View"}
 # The extension's ID is fixed by the public key in its manifest.
 EXTENSION_ORIGIN = "chrome-extension://cjeclngfgpknleeodahdgfhckpolbnhp"
 EXTENSION_SEEN_SECONDS = 600
+# Public pages allowed to use this tool from a visitor's browser. Anything else gets no CORS
+# headers, so it cannot read a reply, and its writes are refused.
+SITE_ORIGINS = {"https://arpan-debnath.vercel.app"}
 Image.MAX_IMAGE_PIXELS = None
 
 COLOR_NAMES = {
@@ -1209,7 +1212,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.headers.get("Host") not in hosts:
             return False
         origin = self.headers.get("Origin")
-        if not write or not origin or origin == EXTENSION_ORIGIN:
+        if not write or not origin or origin == EXTENSION_ORIGIN or origin in SITE_ORIGINS:
             return True
         return urllib.parse.urlsplit(origin).netloc in hosts
 
@@ -1218,9 +1221,34 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", cache)
+        # Stops other sites showing these files with a plain <img>. A listed site asks with
+        # crossorigin, which goes through the CORS check instead.
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_site_headers()
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def send_site_headers(self):
+        origin = self.headers.get("Origin")
+        if origin in SITE_ORIGINS:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+
+    def do_OPTIONS(self):
+        """Answers the browser's check before a site's request. Only listed sites pass."""
+        host_ok = self.headers.get("Host") in {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
+        passed = host_ok and self.headers.get("Origin") in SITE_ORIGINS
+        self.send_response(204 if passed else 403)
+        if passed:
+            self.send_site_headers()
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Max-Age", "600")
+            if self.headers.get("Access-Control-Request-Private-Network"):
+                self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def send_json(self, value, status=200):
         self.send_body(status, json.dumps(value, ensure_ascii=False).encode(), MIME[".json"])
