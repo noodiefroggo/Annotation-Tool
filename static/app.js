@@ -48,9 +48,6 @@ const makeId = () => Math.random().toString(36).slice(2, 10);
 const nextNumber = () => S.items.reduce((max, a) => Math.max(max, a.n || 0), 0) + 1;
 
 const onColor = (color) => (LIGHT_COLORS.includes(color) ? '#1c2024' : '#fff');
-const json = (body) => ({
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-});
 
 function svg(tag, attrs = {}) {
   const el = document.createElementNS(NS, tag);
@@ -319,7 +316,7 @@ function addPage(p) {
     layer.style.width = `${p.w}px`;
     layer.style.height = `${p.h}px`;
     const img = document.createElement('img');
-    img.src = `/files/${meta.id}/pages/${p.img}?v=${p.v || meta.updated}`;
+    img.src = store.pageUrl(meta.id, p.img, p.v || meta.updated);
     img.alt = `Page ${p.n}`;
     img.loading = 'lazy';
     img.draggable = false;
@@ -700,14 +697,9 @@ function touch() {
 
 async function save() {
   if (!S.doc || !S.dirty) return;
-  const body = JSON.stringify({ items: S.items });
   S.dirty = false;
   try {
-    const res = await fetch(`/api/docs/${S.doc.meta.id}/annotations`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body,
-    });
-    if (!res.ok) throw new Error(res.status);
-    const reply = await res.json();
+    const reply = await store.saveMarks(S.doc.meta.id, S.items);
     S.unsent = new Set(reply.unsent);
     S.rev = reply.rev;
     syncSendCount();
@@ -850,13 +842,6 @@ function onKey(e) {
 
 // ---------------------------------------------------------------- documents
 
-async function api(path, options) {
-  const res = await fetch(path, options);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
-}
-
 function toast(text, ms = 0) {
   const el = $('#toast');
   clearTimeout(toast.timer);
@@ -900,7 +885,7 @@ async function openLive(url) {
   $('#liveStage').hidden = false;
   $('#stage').hidden = true;
   try {
-    const reply = await api('/api/live/open', json({ url, ...liveSize() }));
+    const reply = await store.liveOpen({ url, ...liveSize() });
     showDoc(reply.doc);
     live.state = reply.live;
     S.mode = 'browse';
@@ -923,9 +908,7 @@ async function openWith(body, message) {
   toast(message);
   try {
     await flush();
-    const payload = await api('/api/open', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-    });
+    const payload = await store.openSource(body);
     showDoc(payload);
   } catch (err) {
     showHome(err.message);
@@ -940,7 +923,7 @@ async function uploadPdf(file) {
   toast(`Rendering ${file.name}`);
   try {
     await flush();
-    const payload = await api(`/api/upload?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file });
+    const payload = await store.uploadPdf(file);
     showDoc(payload);
     toast('');
   } catch (err) {
@@ -974,7 +957,7 @@ async function showHome(error = '') {
   history.replaceState(null, '', '/');
   $('#openError').textContent = error;
   $('#openError').hidden = !error;
-  const [{ docs }, app] = await Promise.all([api('/api/docs'), api('/api/app')]);
+  const [{ docs }, app] = await Promise.all([store.listDocs(), store.getApp()]);
   S.docs = docs;
   renderLibrary();
   renderExtension(app);
@@ -1005,7 +988,7 @@ function libraryCard(doc) {
     const image = document.createElement('img');
     image.alt = '';
     image.loading = 'lazy';
-    image.src = `/files/${doc.id}/pages/${doc.thumb}`;
+    image.src = store.pageUrl(doc.id, doc.thumb);
     shot.append(image);
   }
   const badge = document.createElement('span');
@@ -1077,17 +1060,17 @@ function buildTags() {
 async function syncDoc() {
   if (!S.doc || S.dirty || S.editing || S.action || inBrowse() || document.hidden) return;
   try {
-    const { rev, pages } = await api(`/api/docs/${S.doc.meta.id}/revision`);
+    const { rev, pages } = await store.getRevision(S.doc.meta.id);
     if (!S.doc || S.dirty || (rev === S.rev && pages === S.doc.meta.pages.length)) return;
     const top = $('#stage').scrollTop;
-    showDoc(await api(`/api/docs/${S.doc.meta.id}`));
+    showDoc(await store.getDoc(S.doc.meta.id));
     $('#stage').scrollTop = top;
   } catch { /* the next tick tries again */ }
 }
 
 async function loadDoc(id) {
   await flush();
-  showDoc(await api(`/api/docs/${id}`));
+  showDoc(await store.getDoc(id));
 }
 
 async function refreshDoc() {
@@ -1095,7 +1078,7 @@ async function refreshDoc() {
   toast(S.doc.meta.kind === 'pdf' ? 'Rendering the PDF again' : 'Capturing the site again');
   try {
     await flush();
-    const payload = await api(`/api/docs/${S.doc.meta.id}/refresh`, { method: 'POST' });
+    const payload = await store.refreshDoc(S.doc.meta.id);
     const top = $('#stage').scrollTop;
     showDoc(payload);
     $('#stage').scrollTop = top;
@@ -1171,8 +1154,7 @@ function bindUi() {
   window.addEventListener('resize', () => applyZoom());
   window.addEventListener('pagehide', () => {
     if (S.doc && S.dirty) {
-      navigator.sendBeacon(`/api/docs/${S.doc.meta.id}/annotations`,
-        new Blob([JSON.stringify({ items: S.items })], { type: 'application/json' }));
+      store.saveMarksOnExit(S.doc.meta.id, S.items);
     }
   });
   $('#stage').addEventListener('wheel', (e) => {

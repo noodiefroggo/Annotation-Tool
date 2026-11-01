@@ -44,11 +44,11 @@ async function enterBrowse(url) {
   showLiveStage(true);
   toast('Starting the browser');
   try {
-    const current = await api('/api/live/state');
+    const current = await store.liveState();
     const sameSite = current.running && hostOf(current.url) === hostOf(target);
-    const reply = await api('/api/live/open', json({
+    const reply = await store.liveOpen({
       url: url || !sameSite ? target : '', doc: S.doc.meta.id, ...liveSize(),
-    }));
+    });
     live.state = reply.live;
     connectLive();
     toast('');
@@ -72,7 +72,7 @@ function lastViewUrl() {
 function connectLive() {
   clearInterval(live.timer);
   live.timer = setInterval(syncLive, 900);
-  $('#liveImg').src = `/api/live/stream?t=${Date.now()}`;
+  $('#liveImg').src = store.liveStreamUrl();
   $('#liveUrl').value = live.state.url || '';
   placeLive();
 }
@@ -86,7 +86,7 @@ function leaveBrowse() {
 
 async function syncLive() {
   try {
-    const state = await api('/api/live/state');
+    const state = await store.liveState();
     if (!state.running) {
       toast('The browser closed after being idle. Press Browse to start it again.', 6000);
       leaveBrowse();
@@ -101,7 +101,7 @@ async function syncLive() {
 async function freezeView(full = false) {
   toast(full ? 'Capturing the full page' : 'Freezing this view');
   try {
-    const reply = await api('/api/live/capture', json({ doc: S.doc.meta.id, full }));
+    const reply = await store.liveCapture({ doc: S.doc.meta.id, full });
     S.doc.meta = reply.meta;
     S.mode = 'doc';
     showLiveStage(false);
@@ -142,7 +142,7 @@ async function pumpLive() {
   live.sending = true;
   const events = live.queue.splice(0);
   try {
-    await fetch('/api/live/input', json({ events }));
+    await store.liveInput(events);
   } catch { /* a dropped event is harmless */ }
   live.sending = false;
   pumpLive();
@@ -201,7 +201,7 @@ function bindLive() {
 
   const go = (action, url) => {
     if (!inBrowse()) return enterBrowse(url);
-    return api('/api/live/go', json({ action, url })).catch((err) => toast(err.message, 5000));
+    return store.liveGo(action, url).catch((err) => toast(err.message, 5000));
   };
   $('#liveBack').addEventListener('click', () => go('back'));
   $('#liveForward').addEventListener('click', () => go('forward'));
@@ -215,7 +215,7 @@ function bindLive() {
   });
   $('#liveWidth').addEventListener('change', async () => {
     if (!inBrowse()) return;
-    live.state = await api('/api/live/viewport', json(liveSize()));
+    live.state = await store.liveViewport(liveSize());
     placeLive();
   });
   $('#liveFull').addEventListener('click', () => {
@@ -235,7 +235,7 @@ function syncSendCount() {
 }
 
 async function refreshSendTargets() {
-  const { listeners } = await api('/api/claude/state');
+  const { listeners } = await store.claudeState();
   const select = $('#sendTarget');
   const previous = select.value;
   select.replaceChildren();
@@ -267,7 +267,7 @@ async function openSend() {
   pop.hidden = false;
   $('#sendMessage').focus();
   await refreshSendTargets().catch(() => undefined);
-  const { settings } = await api('/api/app').catch(() => ({ settings: {} }));
+  const { settings } = await store.getApp().catch(() => ({ settings: {} }));
   $('#cloudLink').value = $('#cloudLink').value || settings.cloud || '';
   $('#cloudRepo').value = $('#cloudRepo').value || settings.repo || '';
 }
@@ -280,10 +280,10 @@ async function sendToClaude() {
     const scope = document.querySelector('input[name="sendScope"]:checked').value;
     const target = $('#sendTarget').value;
     if (target === CLOUD_TARGET) toast('Sending to the cloud chat');
-    const reply = await api(`/api/docs/${S.doc.meta.id}/send`, json({
+    const reply = await store.sendDoc(S.doc.meta.id, {
       scope, message: $('#sendMessage').value, target,
       cloud: $('#cloudLink').value, repo: $('#cloudRepo').value,
-    }));
+    });
     S.unsent = new Set(reply.unsent);
     S.lastSendText = reply.text;
     $('#sendMessage').value = '';
@@ -307,7 +307,7 @@ async function sendToClaude() {
 async function watchDelivery(id) {
   for (let i = 0; i < 6; i++) {
     await new Promise((done) => { setTimeout(done, 700); });
-    const { recent } = await api('/api/claude/state');
+    const { recent } = await store.claudeState();
     const sent = recent.find((m) => m.id === id);
     if (sent?.delivered) {
       toast(`Delivered to ${sent.to}`, 4000);
@@ -322,7 +322,7 @@ async function copySendText() {
     await navigator.clipboard.writeText(S.lastSendText);
     toast('Copied. Paste it into any chat.', 3000);
   } catch {
-    toast('The browser blocked copying. The notes are in data\\LATEST.md.', 5000);
+    toast('The browser blocked copying. The notes are in data/LATEST.md.', 5000);
   }
 }
 
