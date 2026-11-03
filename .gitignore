@@ -2,3 +2,6 @@
 __pycache__/
 data/
 claude-mod/.claude-plugin/types/
+installer/build/
+installer/dist/
+node_modules/
