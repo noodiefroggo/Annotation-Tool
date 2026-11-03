@@ -2,6 +2,10 @@
 
 Mark up PDFs, website snapshots and a live browser inside the built-in browser, then send the notes straight to a Claude chat.
 
+## Install
+
+On Windows, download `AnnotateSetup.exe` from the [latest release](https://github.com/noodiefroggo/Annotation-Tool/releases/latest) and run it. It needs no Python and no admin rights, only Chrome or Edge. Developers on any system can run `npx github:noodiefroggo/Annotation-Tool` instead, which needs Python 3.10 or newer. [installer/README.md](installer/README.md) has the details and the limits.
+
 ## Start
 
 The tool runs all the time at `http://localhost:3190`, so just open that address. The home page is your library of everything you've marked up, and it's where you open a PDF or a website.

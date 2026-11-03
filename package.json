@@ -1,0 +1,9 @@
+{
+  "name": "annotate",
+  "version": "0.1.0",
+  "description": "Mark up PDFs, website snapshots and a live browser, then send the notes to Claude.",
+  "license": "MIT",
+  "repository": "github:noodiefroggo/Annotation-Tool",
+  "bin": { "annotate": "installer/npx/cli.js" },
+  "engines": { "node": ">=18" }
+}
